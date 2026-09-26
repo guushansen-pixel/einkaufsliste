@@ -81,11 +81,15 @@ Bug beim ersten Testlauf gefunden und behoben), Paste-Import (Ziel Liste/
 Vorlage/beides, mit Undo), Laden-Profile (anlegen/Reihenfolge bearbeiten/
 anwenden), Letzte-Liste-Duplizieren, Liste leeren mit Snapshot.
 
-Debug-APK gebaut (2026-09-26, `com.daniel.einkaufsliste.debug`, v1.0 code 1,
-874 KB) und dem Nutzer zum Testen aufs Handy geschickt. Release-APK
-(`com.daniel.einkaufsliste`, v1.0 code 1, 644.7 KB) am selben Tag signiert
-gebaut und per USB installiert. Noch offen: Rückmeldung vom echten Gerät
-(WebView-Force-Dark, Zurück-Wischgeste, Touch-/Scroll-Verhalten in den
-Overlays, Paste-Import mit dem vollständigen Originaldokument). Geplant,
-aber bewusst nicht in v1: Sync zwischen Geräten, KI/Foto-Import (siehe
-README).
+v1.0 (Debug + signierte Release-APK) am 2026-09-26 gebaut und installiert.
+Erstes Gerätefeedback ergab drei echte Bugs/Verbesserungen, alle behoben in
+v1.1 (code 2, signiert installiert): Import-Heuristik erkannte eingerückte
+Artikel mit Doppelpunkt ("Baguette:") fälschlich als Kategorie, und ein
+angehängtes kleines "etc" in echten Kategorienamen ("MÜSLI BROT etc") ließ
+die Großschreibungs-Erkennung fehlschlagen; Kategorie-/Artikel-Zeilen hatten
+zu viele kleine Icons (jetzt ein "⋮"-Aktions-Sheet mit Textlabels); neu:
+Artikel↔Kategorie hoch-/herabstufen zum manuellen Korrigieren von
+Fehlklassifizierungen, plus ein Mengen-Stepper (+/-) am Artikel. Noch offen:
+weiteres Gerätefeedback, insbesondere Import des vollständigen
+Originaldokuments. Geplant, aber bewusst nicht in v1: Sync zwischen
+Geräten, KI/Foto-Import (siehe README).

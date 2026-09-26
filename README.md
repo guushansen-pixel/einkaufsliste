@@ -98,18 +98,34 @@ Kategorien (aus Liste + Vorlage), die noch nicht im Profil stehen.
   (neue IDs, `fromTemplateId`-Verknüpfungen gehen dabei bewusst verloren).
 - **Liste leeren:** speichert den bisherigen Stand als "letzte Liste" und
   setzt die aktive Liste zurück.
+- **Mengen-Stepper:** `+`/`-` neben jedem Artikel passt eine führende
+  `Nx`-Menge im Freitext an (`parseQtyPrefix`/`formatQtyPrefix`), ohne den
+  Text neu eintippen zu müssen. Bei Menge 1 verschwindet das Präfix wieder
+  (passt zur echten Liste, die bei Einzelstück meist keine Zahl voranstellt).
+- **Artikel/Kategorie hoch-/herabstufen:** über das "⋮"-Menü lässt sich ein
+  fehlklassifizierter Artikel zu einer eigenen Kategorie machen
+  (`item-promote`, wird direkt nach seiner bisherigen Kategorie eingefügt)
+  oder eine fehlklassifizierte Kategorie zurück in die vorherige Kategorie
+  eingliedern (`cat-demote`, ihr Name wird zur ersten Artikel-Zeile, ihre
+  eigenen Artikel folgen danach). Das ist die manuelle Korrektur für Fälle,
+  die die Paste-Import-Heuristik falsch einordnet.
 
 ## Paste-Import-Heuristik
 
 Zeilenweise, in dieser Reihenfolge:
 
 1. Leere Zeile → überspringen, ändert nichts an der aktuellen Kategorie.
-2. Kategorie-Signal: Zeile endet auf `:` → Doppelpunkt entfernen, als Name
-   nehmen. ODER Zeile ist komplett nicht-klein (keine Kleinbuchstaben,
-   mindestens ein Buchstabe) UND kurz (≤30 Zeichen) UND kaum eingerückt
-   (≤2 Leerzeichen) → als Kategoriename nehmen. Beide Fälle laufen über
-   dieselbe Funktion (`isCategoryLine`), damit sich die Schwellenwerte an
-   einer Stelle justieren lassen.
+2. Kategorie-Signal: Zeile ist kurz (≤30 Zeichen) UND kaum eingerückt
+   (≤2 Leerzeichen, das ist das wichtigste Signal - Kategorien stehen in
+   echten Listen bündig links, Artikel sind eingerückt) UND (endet auf `:`
+   ODER enthält keine Kleinbuchstaben). Ein angehängtes kleines `etc` wird
+   vor der Gross/Klein-Prüfung abgeschnitten, weil es in der echten
+   Referenzliste an mehreren Kategorienamen hängt ("MÜSLI BROT etc"). Ohne
+   die Einrückungs-Bedingung würde z.B. ein eingerücktes Artikel-Fragment
+   wie "Baguette:" fälschlich zur Kategorie (realer Bug, gefunden beim
+   ersten Gerätetest mit der vollen Referenzliste, siehe CLAUDE.md). Beide
+   Fälle laufen über dieselbe Funktion (`isCategoryLine`), damit sich die
+   Schwellenwerte an einer Stelle justieren lassen.
 3. Alles andere → Artikel unter der aktuellen Kategorie. Führende
    Aufzählungszeichen (`- * • ☐ ▢`) werden abgeschnitten, Mengenangaben wie
    `10x` bleiben unangetastet (die Bullet-Regex matcht keine Ziffern).
