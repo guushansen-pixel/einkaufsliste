@@ -77,26 +77,33 @@
   .category-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 10px 14px; gap: 8px; }
   .cat-toggle { flex: 1; text-align: left; background: none; border: none; color: var(--fg); font-size: 1.02em; font-weight: 700; cursor: pointer; padding: 4px 0; }
   .cat-count { color: var(--fg-dim); font-weight: 400; font-size: 0.85em; }
-  .cat-controls { display: flex; gap: 4px; flex: 0 0 auto; }
-  .cat-controls button, .item-controls button {
-    background: transparent; border: none; color: var(--fg-dim); font-size: 0.95em; cursor: pointer; padding: 6px 7px;
+  .cat-more, .item-more {
+    background: transparent; border: none; color: var(--fg-dim); font-size: 1.2em; cursor: pointer; padding: 6px 10px; flex: 0 0 auto; line-height: 1;
   }
-  .cat-controls button:active, .item-controls button:active { color: var(--fg); }
+  .cat-more:active, .item-more:active { color: var(--fg); }
 
   .items { display: flex; flex-direction: column; border-top: 1px solid var(--border); }
-  .item { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px 8px 14px; border-top: 1px solid var(--border); gap: 6px; }
+  .item { display: flex; align-items: center; justify-content: space-between; padding: 8px 6px 8px 14px; border-top: 1px solid var(--border); gap: 6px; }
   .items .item:first-child { border-top: none; }
   .item-main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
   .item-main input[type="checkbox"] { width: 20px; height: 20px; flex: 0 0 auto; }
   .item-text { flex: 1; min-width: 0; overflow-wrap: anywhere; cursor: text; }
   .item.checked .item-text { color: var(--fg-dim); text-decoration: line-through; }
-  .item-controls { display: flex; gap: 2px; flex: 0 0 auto; }
-  .item-controls .star { color: var(--fg-dim); }
+
+  .qty-stepper { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+  .qty-stepper button {
+    background: var(--bg); border: 1px solid var(--border); color: var(--fg); border-radius: 6px;
+    width: 24px; height: 24px; font-size: 1em; line-height: 1; cursor: pointer; padding: 0;
+  }
+  .qty-stepper button:active { background: var(--card-bg-hover); }
+  .qty-stepper .qty-val { min-width: 26px; text-align: center; font-size: 0.85em; color: var(--fg-dim); }
 
   .tmpl-item { cursor: pointer; }
   .tmpl-item.in-active { background: rgba(76,175,125,0.12); }
   .tmpl-badge { flex: 0 0 auto; width: 22px; text-align: center; color: var(--accent); font-weight: 700; }
   .tmpl-item .item-text { flex: 1; }
+
+  #action-sheet-buttons button.danger { color: var(--danger); border-color: var(--danger); }
 
   .empty-hint { color: var(--fg-dim); text-align: center; margin-top: 30px; font-size: 0.95em; line-height: 1.5; }
 
@@ -237,6 +244,13 @@
         <button data-action="delete-profile" class="secondary danger">Profil löschen</button>
         <button data-action="close-storeedit" class="primary-sm">Fertig</button>
       </div>
+    </div>
+  </div>
+
+  <div id="action-sheet-overlay" class="overlay" hidden>
+    <div class="sheet">
+      <div id="action-sheet-buttons"></div>
+      <button data-action="close-action-sheet" class="secondary">Schließen</button>
     </div>
   </div>
 
@@ -446,16 +460,55 @@
     trimFavorites();
   }
 
+  // ---------- quantity stepper (leading "Nx" prefix in the free-text item) ----------
+  function parseQtyPrefix(text) {
+    var m = /^(\d+)\s*[xX]\s+(.*)$/.exec(text.trim());
+    if (m) return { qty: parseInt(m[1], 10), rest: m[2] };
+    return { qty: 1, rest: text.trim() };
+  }
+  function formatQtyPrefix(qty, rest) {
+    return qty <= 1 ? rest : (qty + 'x ' + rest);
+  }
+  function adjustQty(mode, catId, itemId, delta) {
+    var cat = getCatById(mode, catId);
+    var item = cat && cat.items.find(function (i) { return i.id === itemId; });
+    if (!item) return;
+    var p = parseQtyPrefix(item.text);
+    item.text = formatQtyPrefix(Math.max(1, p.qty + delta), p.rest);
+    saveAll();
+    render();
+  }
+  function renderQtyStepperHtml(mode, cat, it) {
+    var qty = parseQtyPrefix(it.text).qty;
+    return '<span class="qty-stepper">' +
+      '<button data-action="qty-down" data-mode="' + mode + '" data-cat="' + cat.id + '" data-item="' + it.id + '">−</button>' +
+      '<span class="qty-val">' + qty + '×</span>' +
+      '<button data-action="qty-up" data-mode="' + mode + '" data-cat="' + cat.id + '" data-item="' + it.id + '">+</button>' +
+      '</span>';
+  }
+
   // ---------- paste-import parser ----------
   function isCategoryLine(rawLine) {
+    // Kategorien stehen im Quelltext (echte Einkaufslisten) so gut wie immer
+    // buendig links, Artikel sind eingerueckt - das ist das zuverlaessigste
+    // Signal. Ohne die Einrueckungspruefung wuerde z.B. ein eingeruecktes
+    // Artikel-Fragment wie "Baguette:" faelschlich zur Kategorie (echter Bug,
+    // gefunden beim Import der vollen Referenzliste).
     var t = rawLine.trim();
     if (!t) return false;
-    if (/:$/.test(t)) return true;
-    var hasLetter = /[A-Za-zÀ-ÖØ-öø-ÿ]/.test(t);
-    var hasLower = /[a-zà-öø-ÿ]/.test(t);
+    if (t.length > 30) return false;
     var leadingWs = (rawLine.match(/^[ \t]*/) || [''])[0].length;
-    if (hasLetter && !hasLower && t.length <= 30 && leadingWs <= 2) return true;
-    return false;
+    if (leadingWs > 2) return false;
+    var hasLetter = /[A-Za-zÀ-ÖØ-öø-ÿ]/.test(t);
+    if (!hasLetter) return false;
+    var endsWithColon = /:$/.test(t);
+    var bare = endsWithColon ? t.slice(0, -1).trim() : t;
+    if (!bare) return false;
+    // "etc" haengt in echten Listen oft klein an einer sonst grossgeschriebenen
+    // Kategorie ("MUESLI BROT etc") - fuer die Gross/Klein-Pruefung ignorieren.
+    var bareForCase = bare.replace(/\betc\.?\s*$/i, '').trim() || bare;
+    var hasLower = /[a-zà-öø-ÿ]/.test(bareForCase);
+    return endsWithColon || !hasLower;
   }
   function parsePastedText(raw) {
     var lines = raw.split(/\r\n|\r|\n/);
@@ -770,6 +823,14 @@
   }
 
   // ---------- rendering ----------
+  function renderActionSheet(buttons, ctx) {
+    var box = $('#action-sheet-buttons');
+    box.innerHTML = buttons.map(function (b) {
+      var attrs = 'data-action="' + b.action + '" data-mode="' + ctx.mode + '" data-cat="' + ctx.cat + '"' + (ctx.item ? ' data-item="' + ctx.item + '"' : '');
+      return '<button ' + attrs + ' class="' + (b.danger ? 'danger' : '') + '">' + escapeHtml(b.label) + '</button>';
+    }).join('');
+    show('#action-sheet-overlay');
+  }
   function fillSelect(sel, categories) {
     var prev = sel.value;
     sel.innerHTML = categories.map(function (c) {
@@ -795,25 +856,20 @@
     return '<div class="item ' + (it.checked ? 'checked' : '') + '">' +
       '<label class="item-main">' +
       '<input type="checkbox" data-action="item-check" data-mode="list" data-cat="' + cat.id + '" data-item="' + it.id + '" ' + (it.checked ? 'checked' : '') + '>' +
+      renderQtyStepperHtml('list', cat, it) +
       '<span class="item-text" data-action="item-edit" data-mode="list" data-cat="' + cat.id + '" data-item="' + it.id + '">' + escapeHtml(it.text) + '</span>' +
       '</label>' +
-      '<div class="item-controls">' +
-      '<button data-action="item-up" data-mode="list" data-cat="' + cat.id + '" data-item="' + it.id + '">↑</button>' +
-      '<button data-action="item-down" data-mode="list" data-cat="' + cat.id + '" data-item="' + it.id + '">↓</button>' +
-      '<button class="star" data-action="item-star" data-cat="' + cat.id + '" data-item="' + it.id + '">★</button>' +
-      '<button data-action="item-delete" data-mode="list" data-cat="' + cat.id + '" data-item="' + it.id + '">✕</button>' +
-      '</div></div>';
+      '<button class="item-more" data-action="open-item-actions" data-mode="list" data-cat="' + cat.id + '" data-item="' + it.id + '">⋮</button>' +
+      '</div>';
   }
   function renderTemplateItemHtml(cat, it) {
     var inActive = !!findLinkedActiveItem(it.id);
     return '<div class="item tmpl-item ' + (inActive ? 'in-active' : '') + '" data-action="tmpl-tap" data-cat="' + cat.id + '" data-item="' + it.id + '">' +
       '<span class="tmpl-badge">' + (inActive ? '✓' : '+') + '</span>' +
+      renderQtyStepperHtml('template', cat, it) +
       '<span class="item-text" data-action="item-edit" data-mode="template" data-cat="' + cat.id + '" data-item="' + it.id + '">' + escapeHtml(it.text) + '</span>' +
-      '<div class="item-controls">' +
-      '<button data-action="item-up" data-mode="template" data-cat="' + cat.id + '" data-item="' + it.id + '">↑</button>' +
-      '<button data-action="item-down" data-mode="template" data-cat="' + cat.id + '" data-item="' + it.id + '">↓</button>' +
-      '<button data-action="item-delete" data-mode="template" data-cat="' + cat.id + '" data-item="' + it.id + '">✕</button>' +
-      '</div></div>';
+      '<button class="item-more" data-action="open-item-actions" data-mode="template" data-cat="' + cat.id + '" data-item="' + it.id + '">⋮</button>' +
+      '</div>';
   }
   function renderCategories(containerEl, listObj, mode) {
     var collapsed = state.settings.collapsed || {};
@@ -834,12 +890,8 @@
         '<div class="category-head">' +
         '<button class="cat-toggle" data-action="cat-collapse" data-mode="' + mode + '" data-cat="' + cat.id + '">' +
         (isCollapsed ? '▸' : '▾') + ' ' + escapeHtml(cat.name) + ' <span class="cat-count">' + cat.items.length + '</span></button>' +
-        '<div class="cat-controls">' +
-        '<button data-action="cat-up" data-mode="' + mode + '" data-cat="' + cat.id + '">↑</button>' +
-        '<button data-action="cat-down" data-mode="' + mode + '" data-cat="' + cat.id + '">↓</button>' +
-        '<button data-action="cat-rename" data-mode="' + mode + '" data-cat="' + cat.id + '">✎</button>' +
-        '<button data-action="cat-delete" data-mode="' + mode + '" data-cat="' + cat.id + '">🗑</button>' +
-        '</div></div>' +
+        '<button class="cat-more" data-action="open-cat-actions" data-mode="' + mode + '" data-cat="' + cat.id + '">⋮</button>' +
+        '</div>' +
         '<div class="items">' + itemsHtml + '</div></div>';
     }).join('');
   }
@@ -914,9 +966,43 @@
       saveJSON(KEYS.SETTINGS, state.settings);
       render();
     },
-    'cat-up': function (el) { moveCategory(el.dataset.mode, el.dataset.cat, -1); },
-    'cat-down': function (el) { moveCategory(el.dataset.mode, el.dataset.cat, 1); },
+    'open-cat-actions': function (el) {
+      var mode = el.dataset.mode;
+      var listObj = getListObj(mode);
+      var idx = listObj.categories.findIndex(function (c) { return c.id === el.dataset.cat; });
+      if (idx < 0) return;
+      var buttons = [
+        { label: 'Nach oben', action: 'cat-up' },
+        { label: 'Nach unten', action: 'cat-down' },
+        { label: 'Umbenennen', action: 'cat-rename' }
+      ];
+      if (idx > 0) buttons.push({ label: 'Zu Artikel herabstufen', action: 'cat-demote' });
+      buttons.push({ label: 'Löschen', action: 'cat-delete', danger: true });
+      renderActionSheet(buttons, { mode: mode, cat: el.dataset.cat });
+    },
+    'open-item-actions': function (el) {
+      var mode = el.dataset.mode;
+      var cat = getCatById(mode, el.dataset.cat);
+      var item = cat && cat.items.find(function (i) { return i.id === el.dataset.item; });
+      if (!item) return;
+      var buttons = [
+        { label: 'Nach oben', action: 'item-up' },
+        { label: 'Nach unten', action: 'item-down' }
+      ];
+      if (mode === 'list') {
+        var lower = item.text.trim().toLowerCase();
+        var fav = state.favorites.items.find(function (f) { return f.text.trim().toLowerCase() === lower; });
+        buttons.push({ label: (fav && fav.pinned) ? 'Favorit-Pin entfernen' : 'Als Favorit anpinnen', action: 'item-star' });
+      }
+      buttons.push({ label: 'Zu eigener Kategorie machen', action: 'item-promote' });
+      buttons.push({ label: 'Löschen', action: 'item-delete', danger: true });
+      renderActionSheet(buttons, { mode: mode, cat: el.dataset.cat, item: el.dataset.item });
+    },
+    'close-action-sheet': function () { hide('#action-sheet-overlay'); },
+    'cat-up': function (el) { hide('#action-sheet-overlay'); moveCategory(el.dataset.mode, el.dataset.cat, -1); },
+    'cat-down': function (el) { hide('#action-sheet-overlay'); moveCategory(el.dataset.mode, el.dataset.cat, 1); },
     'cat-rename': function (el) {
+      hide('#action-sheet-overlay');
       var mode = el.dataset.mode;
       var listObj = getListObj(mode);
       var cat = getCatById(mode, el.dataset.cat);
@@ -929,6 +1015,7 @@
       });
     },
     'cat-delete': function (el) {
+      hide('#action-sheet-overlay');
       var mode = el.dataset.mode;
       var listObj = getListObj(mode);
       var cat = getCatById(mode, el.dataset.cat);
@@ -942,6 +1029,25 @@
         render();
       });
     },
+    'cat-demote': function (el) {
+      hide('#action-sheet-overlay');
+      var mode = el.dataset.mode;
+      var listObj = getListObj(mode);
+      var idx = listObj.categories.findIndex(function (c) { return c.id === el.dataset.cat; });
+      if (idx <= 0) { toast('Keine vorherige Kategorie vorhanden.'); return; }
+      var cat = listObj.categories[idx];
+      var target = listObj.categories[idx - 1];
+      var headerItem = { id: uid('item'), text: cat.name, order: target.items.length, createdAt: nowIso() };
+      if (mode !== 'template') { headerItem.checked = false; headerItem.checkedAt = null; }
+      target.items.push(headerItem);
+      cat.items.forEach(function (it) { it.order = target.items.length; target.items.push(it); });
+      listObj.categories = listObj.categories.filter(function (c) { return c !== cat; });
+      renumberCats(listObj);
+      renumberItems(target);
+      saveAll();
+      render();
+      toast('"' + cat.name + '" wurde in "' + target.name + '" eingegliedert.');
+    },
     'item-check': function (el) {
       var cat = getCatById('list', el.dataset.cat);
       var item = cat && cat.items.find(function (i) { return i.id === el.dataset.item; });
@@ -951,8 +1057,10 @@
       saveAll();
       render();
     },
-    'item-up': function (el) { moveItem(el.dataset.mode, el.dataset.cat, el.dataset.item, -1); },
-    'item-down': function (el) { moveItem(el.dataset.mode, el.dataset.cat, el.dataset.item, 1); },
+    'item-up': function (el) { hide('#action-sheet-overlay'); moveItem(el.dataset.mode, el.dataset.cat, el.dataset.item, -1); },
+    'item-down': function (el) { hide('#action-sheet-overlay'); moveItem(el.dataset.mode, el.dataset.cat, el.dataset.item, 1); },
+    'qty-up': function (el) { adjustQty(el.dataset.mode, el.dataset.cat, el.dataset.item, 1); },
+    'qty-down': function (el) { adjustQty(el.dataset.mode, el.dataset.cat, el.dataset.item, -1); },
     'item-edit': function (el) {
       var mode = el.dataset.mode;
       var cat = getCatById(mode, el.dataset.cat);
@@ -965,7 +1073,27 @@
         render();
       });
     },
+    'item-promote': function (el) {
+      hide('#action-sheet-overlay');
+      var mode = el.dataset.mode;
+      var listObj = getListObj(mode);
+      var cat = getCatById(mode, el.dataset.cat);
+      if (!cat) return;
+      var idx = cat.items.findIndex(function (i) { return i.id === el.dataset.item; });
+      if (idx < 0) return;
+      var item = cat.items[idx];
+      cat.items.splice(idx, 1);
+      renumberItems(cat);
+      var catIdx = listObj.categories.findIndex(function (c) { return c.id === cat.id; });
+      var newCat = { id: uid('cat'), name: item.text.trim(), order: 0, items: [] };
+      listObj.categories.splice(catIdx + 1, 0, newCat);
+      renumberCats(listObj);
+      saveAll();
+      render();
+      toast('"' + newCat.name + '" ist jetzt eine eigene Kategorie.');
+    },
     'item-delete': function (el) {
+      hide('#action-sheet-overlay');
       var mode = el.dataset.mode;
       var cat = getCatById(mode, el.dataset.cat);
       if (!cat) return;
@@ -975,6 +1103,7 @@
       render();
     },
     'item-star': function (el) {
+      hide('#action-sheet-overlay');
       var cat = getCatById('list', el.dataset.cat);
       var item = cat && cat.items.find(function (i) { return i.id === el.dataset.item; });
       if (!item) return;
