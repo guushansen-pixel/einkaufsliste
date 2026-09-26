@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher-Icon fuer Einkaufsliste: ein Einkaufskorb mit Henkel und einem
+     Haken darin. 108x108, Motiv innerhalb von Radius ~24 um die Mitte
+     (54,54), damit nichts von der runden Launcher-Maske abgeschnitten wird
+     (deutlich konservativer als die erlaubten ~31, da der Henkel-Bogen weit
+     nach oben reicht). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Henkel (Bogen oben, als Ring aus zwei Kreisboegen) -->
+    <path android:fillColor="#2E7D4F"
+        android:pathData="M42,42 a12,12 0 0 1 24,0 l-6,0 a6,6 0 0 0 -12,0 z" />
+
+    <!-- Korb-Koerper (Trapez) -->
+    <path android:fillColor="#4CAF7D"
+        android:pathData="M40,42 L68,42 L62,72 L46,72 Z" />
+
+    <!-- Haken im Korb (abgehakt) -->
+    <path android:strokeColor="#F2F6F3"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M48,58 l5,5 l9,-13" />
+
+    <!-- Zwei kleine Raeder unten -->
+    <path android:fillColor="#2E7D4F"
+        android:pathData="M46,74 a3,3 0 1,0 0.1,0 z" />
+    <path android:fillColor="#2E7D4F"
+        android:pathData="M62,74 a3,3 0 1,0 0.1,0 z" />
+</vector>
