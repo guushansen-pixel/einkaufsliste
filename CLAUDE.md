@@ -90,6 +90,12 @@ die Großschreibungs-Erkennung fehlschlagen; Kategorie-/Artikel-Zeilen hatten
 zu viele kleine Icons (jetzt ein "⋮"-Aktions-Sheet mit Textlabels); neu:
 Artikel↔Kategorie hoch-/herabstufen zum manuellen Korrigieren von
 Fehlklassifizierungen, plus ein Mengen-Stepper (+/-) am Artikel. Noch offen:
-weiteres Gerätefeedback, insbesondere Import des vollständigen
-Originaldokuments. Geplant, aber bewusst nicht in v1: Sync zwischen
+weiteres Gerätefeedback. Import des vollständigen Originaldokuments wurde
+im Browser getestet: alle 15 echten Kategorien korrekt erkannt, 235 Artikel,
+Mengen automatisch übernommen, Duplikat automatisch zusammengeführt - einzige
+Restauffälligkeit sind ein paar durch die PDF-Textextraktion umgebrochene
+Sätze, die als zwei Artikel ankommen (kein Parser-Bug, manuell in Sekunden
+korrigierbar). v1.2 (code 3, signiert installiert): rein optisches Redesign
+auf Wunsch (Schatten, Farbverläufe, Animationen, Icons), keine
+Funktionsänderung. Geplant, aber bewusst nicht in v1: Sync zwischen
 Geräten, KI/Foto-Import (siehe README).
