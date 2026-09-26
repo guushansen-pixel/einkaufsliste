@@ -82,7 +82,10 @@ Vorlage/beides, mit Undo), Laden-Profile (anlegen/Reihenfolge bearbeiten/
 anwenden), Letzte-Liste-Duplizieren, Liste leeren mit Snapshot.
 
 Debug-APK gebaut (2026-09-26, `com.daniel.einkaufsliste.debug`, v1.0 code 1,
-874 KB) und dem Nutzer zum Testen aufs Handy geschickt. Noch offen:
-Rückmeldung vom echten Gerät (WebView-Force-Dark, Zurück-Wischgeste,
-Touch-/Scroll-Verhalten in den Overlays). Geplant, aber bewusst nicht in v1:
-Sync zwischen Geräten, KI/Foto-Import (siehe README).
+874 KB) und dem Nutzer zum Testen aufs Handy geschickt. Release-APK
+(`com.daniel.einkaufsliste`, v1.0 code 1, 644.7 KB) am selben Tag signiert
+gebaut und per USB installiert. Noch offen: Rückmeldung vom echten Gerät
+(WebView-Force-Dark, Zurück-Wischgeste, Touch-/Scroll-Verhalten in den
+Overlays, Paste-Import mit dem vollständigen Originaldokument). Geplant,
+aber bewusst nicht in v1: Sync zwischen Geräten, KI/Foto-Import (siehe
+README).
