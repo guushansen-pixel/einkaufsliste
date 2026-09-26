@@ -81,5 +81,8 @@ Bug beim ersten Testlauf gefunden und behoben), Paste-Import (Ziel Liste/
 Vorlage/beides, mit Undo), Laden-Profile (anlegen/Reihenfolge bearbeiten/
 anwenden), Letzte-Liste-Duplizieren, Liste leeren mit Snapshot.
 
-Noch nicht gebaut/getestet: Debug-APK auf echtem Gerät. Geplant, aber
-bewusst nicht in v1: Sync zwischen Geräten, KI/Foto-Import (siehe README).
+Debug-APK gebaut (2026-09-26, `com.daniel.einkaufsliste.debug`, v1.0 code 1,
+874 KB) und dem Nutzer zum Testen aufs Handy geschickt. Noch offen:
+Rückmeldung vom echten Gerät (WebView-Force-Dark, Zurück-Wischgeste,
+Touch-/Scroll-Verhalten in den Overlays). Geplant, aber bewusst nicht in v1:
+Sync zwischen Geräten, KI/Foto-Import (siehe README).
