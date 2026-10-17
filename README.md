@@ -7,6 +7,8 @@ aufgebaut als Edeka). Reine Web-App (`web/index.html`), gebaut zur APK über
 [apk-builder](../apk-builder). Build-/Testbefehle stehen in
 [CLAUDE.md](CLAUDE.md).
 
+Aktuelle signierte Release-APK: [einkaufsliste-1.3.apk](dist/einkaufsliste-1.3.apk)
+
 ## Hintergrund
 
 Die App orientiert sich an einer echten, über Jahre gewachsenen
@@ -142,6 +144,52 @@ Wer die Heuristik anpasst: gegen einen Ausschnitt der echten Referenzliste
 (siehe "Hintergrund") testen, nicht nur gegen künstliche Beispiele - genau
 dieses Format muss zuverlässig erkannt werden.
 
+## PDF-/Bild-Import (Samsung Notes)
+
+Die Liste wird inzwischen in Samsung Notes als Checkliste gepflegt und als PDF
+exportiert (`Einkaufsliste_YYMMDD_HHMMSS.pdf`). Diese PDFs sind **reine
+Bilder** (eine Rastergrafik pro Seite, kein Text) - deshalb OCR, komplett
+offline (Bibliotheken in `web/vendor/`, siehe dortige README). Bedeutung im
+Export: **offen** (leere Box, schwarzer Text) = muss gekauft werden,
+**abgehakt** (Box mit Haken, grau, durchgestrichen) = wird nicht gebraucht.
+
+Weg in die App: Menü → "Liste importieren" → "PDF oder Bild wählen", oder in
+Samsung Notes / im PDF-Viewer "Teilen → Einkaufsliste". Screenshots der
+Notiz gehen genauso.
+
+Ablauf pro Seite (`ocrPage` in `index.html`):
+
+1. Seite mit pdf.js auf 1800 px Breite rendern (Bilder werden auf dieselbe
+   Breite skaliert, damit alle Schwellen gleich greifen).
+2. Zeilen über die horizontale Projektion dunkler Pixel finden. Papierfarbe =
+   häufigster heller Grauwert (weiß oder beige, je nach Export).
+3. Je Zeile: **Checkbox** = hohles Quadrat am Zeilenanfang (alle vier Kanten
+   durchgehend - reine Größenprüfung reicht nicht, "ÖL" ist auch fast
+   quadratisch). **Offen/abgehakt** kommt aus den Pixeln, nicht aus dem
+   OCR-Text: Dunkelheit der dunkelsten 5 % Textpixel relativ zum Papier
+   (offen ~0.85, abgehakt ~0.3-0.5, Schwelle 0.62) UND kein langer
+   durchgehender Strich (Durchstreichung).
+4. OCR auf einer bereinigten Kopie: Checkbox weg, Durchstreich-Strich
+   entfernt, binarisiert; je Zeile ein Rechteck mit Tesseract-PSM 7.
+5. Zeile ohne Box: weit links = Kategorie (braucht überwiegend Buchstaben,
+   filtert Statusleisten-Reste auf Screenshots), auf Höhe der Artikeltexte
+   und direkt unter einem Artikel = umgebrochene Folgezeile, sonst verworfen
+   (z.B. Fußzeile eines PDF-Viewers).
+6. **Abgleich mit Bekanntem:** OCR-Text wird auf den nächstgelegenen schon
+   bekannten Artikel-/Kategorietext (Vorlage + Liste, Akzente ignoriert,
+   Editierdistanz ≤ 20 % bzw. 25 %) korrigiert - Tesseract verliert z.B.
+   Umlaute in Großbuchstaben ("KUHLREGAL"). **Zahlen werden dabei nie
+   geändert**: "2x Traubensaft" wird nicht zum bekannten "3x Traubensaft".
+
+Danach Prüfliste: offene Artikel sind angehakt (= kommen auf die Liste),
+Text antippen zum Korrigieren, abgehakte per Schalter einblendbar.
+"Übernehmen": angehakte → aktive Liste, **alle** Zeilen → Vorlage (so
+wächst der Katalog mit), mit dem bestehenden einmaligen Undo.
+
+Gemessen am Backup-Export vom 28.02.2026 (12 Seiten, 206 Zeilen): alle 22
+offenen Artikel korrekt erkannt, keine Fehlzuordnung offen/abgehakt; am
+Desktop ~25 s für 12 Seiten.
+
 ## Wichtige technische Falle: keine nativen Dialoge
 
 Das apk-builder-WebView-Template registriert **keinen** `WebChromeClient`.
@@ -160,7 +208,7 @@ brauchen, müssen diese Overlays verwenden.
 - **Sync zwischen Geräten** (du + deine Frau): Datenmodell hat bereits
   stabile IDs und ISO-Timestamps - eine spätere Sync-Schicht kann darauf
   ein Last-Write-Wins/Merge-Verfahren aufbauen, ohne das Schema zu brechen.
-- **KI/Foto-Import:** bewusst nicht in v1 (kein API-Key, kein
+- **KI-Import:** (der Foto-/PDF-Import per Offline-OCR existiert seit v1.3, siehe oben) bewusst nicht in v1 (kein API-Key, kein
   Netzwerkzugriff). Der Paste-Parser liefert bereits die Zwischenstruktur
   `{categories: [{name, items: [text, ...]}]}`, die auch ein späterer
   OCR/Vision-Weg erzeugen müsste - die Merge-Funktion

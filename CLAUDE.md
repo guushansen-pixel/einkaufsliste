@@ -31,28 +31,43 @@ Manuelle Test-Checkliste im Browser:
 - "Liste leeren" gefolgt von "Letzte Liste erneut verwenden".
 - Reload-Test: Seite neu laden, geprüft dass localStorage-Stand
   (Liste, Vorlage, Favoriten, Laden-Profile) erhalten bleibt.
+- PDF-Import: "Liste importieren" → "PDF oder Bild wählen" mit einem echten
+  Samsung-Notes-Export (Backups unter
+  `D:\sicherung pixel 9 ...\Download\Einkaufsliste_*.pdf`), Prüfliste gegen das
+  gerenderte PDF abgleichen. Testdateien nie nach `web/` legen (landen sonst
+  in der APK) - einen zweiten Server nutzen, der sie unter eigenem Pfad
+  ausliefert. **Browser-Pane muss sichtbar sein**: pdf.js rendert über
+  requestAnimationFrame und bleibt in einem versteckten Tab einfach stehen.
 
-APK bauen:
+APK bauen - **immer über den Wrapper**, nie direkt mit apk-builder (er patcht
+Teilen-Intent, `singleTask` und die Datei-Brücke nach, Details im Kopf von
+`build.ps1`):
 
 ```powershell
-cd "D:\claude code projects\apk-builder"
-.\new-app.ps1 -Name Einkaufsliste -PackageId com.daniel.einkaufsliste `
-              -WebRoot "D:\claude code projects\einkaufsliste\web" `
-              -Icon "D:\claude code projects\einkaufsliste\icon.xml" `
-              -IconBackground "#1F2A1F" -Portrait `
-              -VersionName "1.0" -VersionCode <hochzaehlen> -Force
-.\build-apk.ps1 -App Einkaufsliste          # Debug
-.\build-apk.ps1 -App Einkaufsliste -Release # signiert, fuer echten Gebrauch
+.\build.ps1 -VersionName 1.3 -VersionCode <hochzaehlen>            # Debug
+.\build.ps1 -VersionName 1.3 -VersionCode <hochzaehlen> -Release   # signiert -> dist\
 ```
+
+`-Release` legt die APK als `dist\einkaufsliste-<Version>.apk` ab (alte werden
+entfernt) - den Link oben im README mitziehen. Repo auf GitHub
+(`guushansen-pixel/einkaufsliste`, öffentlich): jede Änderung committen und
+pushen, die APK in `dist/` gehört mit ins Repo.
 
 Was sich nur auf dem echten Gerät verifizieren lässt: WebView-Force-Dark-
 Verhalten, Zurück-Wischgeste, Touch-/Scroll-Verhalten in den Overlays
-(Menü, Import, Laden-Reihenfolgen).
+(Menü, Import, Laden-Reihenfolgen), Dateiauswahl und "Teilen" (native
+Brücke `window.ElAndroid`), OCR-Dauer auf dem Handy.
 
 ## Konventionen
 
 - Alles in `web/index.html` (HTML+CSS+JS inline), kein Framework, keine
-  externen Abhängigkeiten - muss offline funktionieren. `new-app.ps1` ohne
+  externen Abhängigkeiten - muss offline funktionieren. Einzige Ausnahme:
+  die OCR-Bibliotheken in `web/vendor/` (lokal mitgeliefert, Quellen und
+  SHA-256 in `web/vendor/README.md`). Dort nur klassische Skripte - kein
+  `fetch()`, kein Worker, kein ES-Modul: die APK läuft unter
+  `file:///android_asset/`, wo all das am `null`-Origin scheitert. **Den
+  Origin nicht ändern** (z.B. auf einen https-Asset-Loader): localStorage
+  hängt daran, Liste und Vorlage auf dem Gerät wären weg. `new-app.ps1` ohne
   `-Online` aufrufen.
 - `icon.xml` liegt bewusst **neben** `web/`, nicht darin.
 - localStorage-Keys sind versioniert (`el_list_v1`, `el_template_v1`,
@@ -98,4 +113,10 @@ Sätze, die als zwei Artikel ankommen (kein Parser-Bug, manuell in Sekunden
 korrigierbar). v1.2 (code 3, signiert installiert): rein optisches Redesign
 auf Wunsch (Schatten, Farbverläufe, Animationen, Icons), keine
 Funktionsänderung. Geplant, aber bewusst nicht in v1: Sync zwischen
-Geräten, KI/Foto-Import (siehe README).
+Geräten, KI-Import (siehe README).
+
+v1.3 (code 4, 2026-10-17): PDF-/Bild-Import für Samsung-Notes-Exporte
+(Offline-OCR, offen/abgehakt aus den Pixeln, Abgleich mit der Vorlage,
+Prüfliste) plus "Teilen → Einkaufsliste". Im Browser gegen einen echten
+12-Seiten-Export und einen Screenshot getestet; signierte APK in `dist/`.
+**Gerätetest noch offen** (Dateiauswahl, Teilen, OCR-Tempo auf dem Handy).

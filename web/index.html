@@ -198,6 +198,12 @@
   .radio-group label { display: flex; align-items: center; gap: 8px; }
   .radio-group input { accent-color: var(--accent); }
   .hint { color: var(--fg-dim); font-size: 0.9em; margin-bottom: 12px; }
+  .ocr-cat { font-weight: 700; letter-spacing: 0.04em; margin: 14px 0 6px; color: var(--accent-strong); font-size: 0.92em; }
+  .ocr-row { display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-bottom: 1px solid var(--border); }
+  .ocr-row input { accent-color: var(--accent); width: 20px; height: 20px; flex: none; }
+  .ocr-row .ocr-text { flex: 1; cursor: pointer; }
+  .ocr-row.off .ocr-text { color: var(--fg-dim); }
+  .ocr-row .ocr-fix { font-size: 0.78em; color: var(--fg-dim); display: block; }
   .link-btn { background: none !important; border: none !important; color: var(--accent-strong) !important; padding: 0 !important; width: auto !important; display: inline !important; text-decoration: underline; }
 
   #textinput-field {
@@ -272,17 +278,32 @@
   <div id="import-overlay" class="overlay" hidden>
     <div class="sheet">
       <h2>Liste importieren</h2>
+      <button data-action="pick-import-file" class="primary-sm">📄 PDF oder Bild wählen (Samsung Notes)</button>
+      <input type="file" id="import-file" accept="application/pdf,image/*" hidden>
+      <div id="ocr-progress" class="hint" hidden></div>
+      <div id="ocr-review" hidden>
+        <div class="btn-row">
+          <button data-action="ocr-apply" class="primary-sm">Übernehmen</button>
+          <button data-action="ocr-cancel" class="secondary">Verwerfen</button>
+        </div>
+        <p class="hint" style="margin-top:10px;">Angehakt = kommt auf die Einkaufsliste. Alle Zeilen (auch abgehakte) ergänzen die Vorlage. Text antippen zum Korrigieren.</p>
+        <label class="checkbox-row"><input type="checkbox" id="ocr-show-all"> auch abgehakte Zeilen anzeigen</label>
+        <div id="ocr-review-list"></div>
+      </div>
+      <div id="import-paste-part">
+      <p class="hint" style="margin-top:4px;">… oder Text einfügen:</p>
       <textarea id="import-text" rows="10" placeholder="Text einfügen… (GROSSGESCHRIEBENE oder mit „:“ endende Zeilen werden als Kategorie erkannt)"></textarea>
       <div class="radio-group">
         <label><input type="radio" name="import-target" value="both" checked> In aktive Liste UND Vorlage</label>
         <label><input type="radio" name="import-target" value="list"> Nur in aktive Liste</label>
         <label><input type="radio" name="import-target" value="template"> Nur in Vorlage</label>
       </div>
-      <div id="import-feedback" class="hint"></div>
-      <div class="btn-row">
+      <div class="btn-row" style="margin-bottom:12px;">
         <button data-action="do-import" class="primary-sm">Importieren</button>
-        <button data-action="close-import" class="secondary">Schließen</button>
       </div>
+      </div>
+      <div id="import-feedback" class="hint"></div>
+      <button data-action="close-import" class="secondary">Schließen</button>
     </div>
   </div>
 
@@ -762,6 +783,7 @@
     $('#import-feedback').textContent = '';
     document.querySelector('input[name="import-target"][value="both"]').checked = true;
     importSnapshot = null;
+    if (!ocrBusy) { ocrRows = null; $('#ocr-review').hidden = true; $('#import-paste-part').hidden = false; }
     show('#import-overlay');
   }
   function doImport() {
@@ -792,6 +814,446 @@
     render();
     $('#import-feedback').textContent = 'Rückgängig gemacht.';
   }
+
+  // ---------- PDF-/Bild-Import (Samsung-Notes-Export) ----------
+  // Samsung Notes exportiert Checklisten als reine Bild-PDF (kein Text drin),
+  // deshalb OCR. Offen/abgehakt wird NICHT aus dem OCR-Text gelesen, sondern
+  // aus den Pixeln: abgehakte Zeilen sind grau + durchgestrichen, offene
+  // schwarz. Alles laeuft im Hauptthread mit per <script> geladenen Libs -
+  // unter file:///android_asset scheitern fetch(), Worker und ES-Module
+  // (Details: vendor/README.md).
+  var OCR_PAGE_WIDTH = 1800;
+  var _ocr = null;           // { M, api } nach erstem Laden
+  var ocrRows = null;        // Pruefliste der letzten Erkennung
+  var ocrBusy = false;
+
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = function () { reject(new Error('Konnte ' + src + ' nicht laden')); };
+      document.head.appendChild(s);
+    });
+  }
+  function nextFrame() { return new Promise(function (r) { setTimeout(r, 30); }); }
+
+  function loadOcrEngine() {
+    if (_ocr) return Promise.resolve(_ocr);
+    return loadScript('vendor/tesseract-core-simd-lstm.wasm.js')
+      .then(function () { return loadScript('vendor/deu.traineddata.js'); })
+      .then(function () { return window.TesseractCore(); })
+      .then(function (M) {
+        var b = atob(window.EL_DEU_TRAINEDDATA_B64);
+        var u = new Uint8Array(b.length);
+        for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+        window.EL_DEU_TRAINEDDATA_B64 = null;
+        M.FS.writeFile('/deu.traineddata', u);
+        var api = new M.TessBaseAPI();
+        if (api.Init('/', 'deu', 1) !== 0) throw new Error('Texterkennung konnte nicht starten');
+        api.SetVariable('tessedit_pageseg_mode', '7'); // eine Textzeile pro Rechteck
+        _ocr = { M: M, api: api };
+        return _ocr;
+      });
+  }
+  function loadPdfJs() {
+    if (window.pdfjsLib) return Promise.resolve();
+    // Worker-Skript zuerst: es setzt globalThis.pdfjsWorker, dann nutzt pdf.js
+    // diesen im Hauptthread statt einen echten Worker zu starten.
+    return loadScript('vendor/pdf.worker.min.js').then(function () { return loadScript('vendor/pdf.min.js'); });
+  }
+
+  function isPdfFile(file) {
+    return /pdf/i.test(file.type || '') || /\.pdf$/i.test(file.name || '');
+  }
+  // Liefert eine Funktion pro Seite, die erst bei Bedarf rendert (spart Speicher).
+  function openPages(file) {
+    return file.arrayBuffer().then(function (buf) {
+      if (isPdfFile(file)) {
+        return loadPdfJs().then(function () {
+          return window.pdfjsLib.getDocument({ data: buf, isEvalSupported: false }).promise;
+        }).then(function (pdf) {
+          var pages = [];
+          for (var n = 1; n <= pdf.numPages; n++) {
+            pages.push((function (num) {
+              return function () {
+                return pdf.getPage(num).then(function (page) {
+                  var v0 = page.getViewport({ scale: 1 });
+                  var vp = page.getViewport({ scale: OCR_PAGE_WIDTH / v0.width });
+                  var c = document.createElement('canvas');
+                  c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+                  return page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise.then(function () { return c; });
+                });
+              };
+            })(n));
+          }
+          return pages;
+        });
+      }
+      return [function () {
+        return new Promise(function (resolve, reject) {
+          var url = URL.createObjectURL(new Blob([buf], { type: file.type || 'image/png' }));
+          var img = new Image();
+          img.onload = function () {
+            var scale = OCR_PAGE_WIDTH / img.naturalWidth;
+            var c = document.createElement('canvas');
+            c.width = OCR_PAGE_WIDTH; c.height = Math.round(img.naturalHeight * scale);
+            c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+            URL.revokeObjectURL(url);
+            resolve(c);
+          };
+          img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('Bild nicht lesbar')); };
+          img.src = url;
+        });
+      }];
+    });
+  }
+
+  // Zeilen ("Baender") ueber die horizontale Projektion dunkler Pixel finden.
+  // Papierfarbe = haeufigster heller Grauwert (weiss oder beige, je nach Export).
+  function analysePage(canvas) {
+    var w = canvas.width, h = canvas.height;
+    var d = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+    var L = new Uint8Array(w * h), hist = new Uint32Array(256);
+    for (var p = 0, i = 0; p < w * h; p++, i += 4) {
+      var v = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) | 0;
+      L[p] = v; hist[v]++;
+    }
+    var paper = 255, best = 0;
+    for (var v2 = 128; v2 < 256; v2++) if (hist[v2] > best) { best = hist[v2]; paper = v2; }
+    var thr = paper - 45;
+    var minInk = Math.max(3, w * 0.002), bands = [], start = -1;
+    for (var y = 0; y <= h; y++) {
+      var c = 0;
+      if (y < h) { var o = y * w; for (var x = 0; x < w; x++) if (L[o + x] < thr) c++; }
+      if (c >= minInk) { if (start < 0) start = y; }
+      else if (start >= 0) { if (y - start >= h * 0.008) bands.push({ y0: start, y1: y }); start = -1; }
+    }
+    var pg = { w: w, h: h, L: L, paper: paper, thr: thr, bands: bands };
+    bands.forEach(function (b) { measureBand(pg, b); });
+    return pg;
+  }
+  function inkRun(pg, x0, x1, y) {
+    var o = y * pg.w, run = 0, longest = 0;
+    for (var x = x0; x < x1; x++) { if (pg.L[o + x] < pg.thr) { run++; if (run > longest) longest = run; } else run = 0; }
+    return longest;
+  }
+  // Checkbox = hohles Quadrat: alle vier Kanten durchgehend dunkel. Reine
+  // Breiten-/Hoehen-Pruefung reicht nicht, "ÖL" am Anfang einer Kategorie
+  // ist ebenfalls ungefaehr quadratisch.
+  function isBox(pg, x0, x1, y0, y1) {
+    var L = pg.L, w = pg.w, thr = pg.thr, top = -1, bot = -1;
+    for (var y = y0; y < y1; y++) {
+      for (var x = x0; x < x1; x++) if (L[y * w + x] < thr) { if (top < 0) top = y; bot = y; break; }
+    }
+    if (top < 0) return false;
+    var bw = x1 - x0, bh = bot - top + 1;
+    if (bh < bw * 0.7 || bh > bw * 1.4) return false;
+    function rowOk(yy) { for (var k = 0; k < 4; k++) { var r = yy + (yy === top ? k : -k); if (inkRun(pg, x0, x1, r) >= bw * 0.7) return true; } return false; }
+    function colOk(xx, dir) {
+      for (var k = 0; k < 4; k++) {
+        var cx = xx + dir * k, run = 0, longest = 0;
+        for (var y2 = top; y2 <= bot; y2++) { if (L[y2 * w + cx] < thr) { run++; if (run > longest) longest = run; } else run = 0; }
+        if (longest >= bh * 0.7) return true;
+      }
+      return false;
+    }
+    return rowOk(top) && rowOk(bot) && colOk(x0, 1) && colOk(x1 - 1, -1);
+  }
+  function measureBand(pg, b) {
+    var w = pg.w, L = pg.L, thr = pg.thr, bh = b.y1 - b.y0;
+    var colInk = new Uint8Array(w);
+    for (var y = b.y0; y < b.y1; y++) {
+      var o = y * w;
+      for (var x = 0; x < w; x++) if (L[o + x] < thr) colInk[x] = 1;
+    }
+    var segs = [], s = -1, gap = 0, maxGap = Math.round(w * 0.012);
+    for (var x2 = 0; x2 <= w; x2++) {
+      if (x2 < w && colInk[x2]) { if (s < 0) s = x2; gap = 0; }
+      else if (s >= 0) { gap++; if (gap > maxGap || x2 === w) { segs.push([s, x2 - gap + 1]); s = -1; gap = 0; } }
+    }
+    var f = segs[0];
+    b.x0 = f ? f[0] : 0;
+    b.x1 = segs.length ? segs[segs.length - 1][1] : 0;
+    b.hasBox = !!f && segs.length > 1 && isBox(pg, f[0], f[1], b.y0, b.y1);
+    b.textX0 = b.hasBox ? segs[1][0] : b.x0;
+    // Dunkelste 5 % der Textpixel (ohne Checkbox) relativ zum Papier:
+    // offen ~0.8, abgehakt (grau) ~0.3-0.5.
+    var tv = [];
+    for (var y3 = b.y0; y3 < b.y1; y3++) {
+      var o3 = y3 * w;
+      for (var x3 = b.textX0; x3 < b.x1; x3++) if (L[o3 + x3] < thr) tv.push(L[o3 + x3]);
+    }
+    tv.sort(function (a, c) { return a - c; });
+    var dark5 = tv.length ? tv[Math.floor(tv.length * 0.05)] : pg.paper;
+    b.darkness = (pg.paper - dark5) / pg.paper;
+    // Durchgestrichen: eine Pixelreihe mit sehr langem durchgehendem Strich.
+    b.strikeRows = {};
+    var any = false;
+    for (var y4 = b.y0; y4 < b.y1; y4++) {
+      if (inkRun(pg, b.textX0, b.x1, y4) > bh * 2.5) { b.strikeRows[y4] = true; any = true; }
+    }
+    b.struck = any;
+    b.open = b.darkness > 0.62 && !any;
+  }
+  // Binaerisierte Kopie fuer die OCR: nur Textbereich je Zeile, Checkbox weg,
+  // Durchstreich-Strich entfernt (ausser wo ein Buchstabe ihn senkrecht kreuzt).
+  function cleanForOcr(pg) {
+    var w = pg.w, h = pg.h, L = pg.L, thr = pg.thr;
+    var out = document.createElement('canvas'); out.width = w; out.height = h;
+    var octx = out.getContext('2d'), oimg = octx.createImageData(w, h), od = oimg.data;
+    od.fill(255);
+    pg.bands.forEach(function (b) {
+      var x0 = Math.max(0, b.textX0 - 4), x1 = Math.min(w, b.x1 + 4), sTop = b.y1, sBot = b.y0;
+      Object.keys(b.strikeRows).forEach(function (k) { k = +k; if (k < sTop) sTop = k; if (k > sBot) sBot = k; });
+      for (var y = b.y0; y < b.y1; y++) {
+        var o = y * w;
+        for (var x = x0; x < x1; x++) {
+          if (L[o + x] >= thr) continue;
+          if (b.strikeRows[y]) {
+            var above = sTop - 3 >= b.y0 && L[(sTop - 3) * w + x] < thr;
+            var below = sBot + 3 < b.y1 && L[(sBot + 3) * w + x] < thr;
+            if (!(above && below)) continue;
+          }
+          var q = (o + x) * 4; od[q] = od[q + 1] = od[q + 2] = 0;
+        }
+      }
+    });
+    octx.putImageData(oimg, 0, 0);
+    return out;
+  }
+  function canvasToPngBytes(c) {
+    return new Promise(function (r) { c.toBlob(r, 'image/png'); })
+      .then(function (blob) { return blob.arrayBuffer(); })
+      .then(function (ab) { return new Uint8Array(ab); });
+  }
+  function cleanOcrText(t) {
+    return (t || '')
+      .replace(/ı/g, 'i').replace(/[„“”]/g, '"').replace(/[‚‘’]/g, "'")
+      .replace(/^[^0-9A-Za-zÀ-ÖØ-öø-ÿ"'(]+/, '')     // Reste von Strich/Checkbox vorne
+      .replace(/[\s\-–—_~|.,]+$/, '')                  // ... und hinten
+      .replace(/\s+/g, ' ').trim();
+  }
+  // -> [{ kind: 'cat'|'item'|'cont', text, open }]
+  function ocrPage(engine, canvas) {
+    var pg = analysePage(canvas);
+    var boxRights = pg.bands.filter(function (b) { return b.hasBox; }).map(function (b) { return b.textX0; }).sort(function (a, c) { return a - c; });
+    var textCol = boxRights.length ? boxRights[Math.floor(boxRights.length / 2)] : pg.w * 0.1;
+    return canvasToPngBytes(cleanForOcr(pg)).then(function (png) {
+      var M = engine.M, api = engine.api;
+      M.FS.writeFile('/input', png);
+      api.SetImageFile(1, 0);
+      var rows = [], prev = null;
+      pg.bands.forEach(function (b) {
+        var x0 = Math.max(0, b.textX0 - 8);
+        api.SetRectangle(x0, Math.max(0, b.y0 - 6), Math.min(pg.w - x0, b.x1 - x0 + 16), Math.min(pg.h - b.y0, b.y1 - b.y0 + 12));
+        var text = cleanOcrText(api.GetUTF8Text());
+        if (!text) return;
+        var kind = b.hasBox ? 'item' : (b.x0 >= textCol - pg.w * 0.02 ? 'cont' : 'cat');
+        if (kind === 'cont') {
+          // Nur direkt unter einem Artikel ist es eine Folgezeile; alles andere
+          // (z.B. Fusszeile eines PDF-Viewers auf einem Screenshot) verwerfen.
+          if (!prev || !prev.hasBox && !prev.isCont || b.y0 - prev.y1 > (prev.y1 - prev.y0) * 0.9) return;
+          b.isCont = true;
+        }
+        if (kind === 'cat') {
+          // Kategorie braucht ueberwiegend Buchstaben (filtert Statusleisten-
+          // Reste wie "17:01 79" auf Screenshots).
+          var letters = (text.match(/[A-Za-zÀ-ÖØ-öø-ÿ]/g) || []).length;
+          if (letters < 3 || letters < text.replace(/\s/g, '').length * 0.6) return;
+        }
+        prev = b;
+        rows.push({ kind: kind, text: text, open: b.open });
+      });
+      return rows;
+    });
+  }
+
+  // ---------- Abgleich mit bekannten Texten (OCR-Fehler glaetten) ----------
+  function foldText(s) {
+    return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ß/g, 'ss').replace(/\s+/g, ' ').trim();
+  }
+  function editDistance(a, b, max) {
+    if (Math.abs(a.length - b.length) > max) return max + 1;
+    var prev = [], cur = [], i, j;
+    for (j = 0; j <= b.length; j++) prev[j] = j;
+    for (i = 1; i <= a.length; i++) {
+      cur = [i]; var rowMin = i;
+      for (j = 1; j <= b.length; j++) {
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        if (cur[j] < rowMin) rowMin = cur[j];
+      }
+      if (rowMin > max) return max + 1;
+      prev = cur;
+    }
+    return prev[b.length];
+  }
+  function digitsOf(s) { return (s.match(/\d+/g) || []).join(','); }
+  function closestKnown(text, known, ratio) {
+    var f = foldText(text), max = Math.max(1, Math.floor(f.length * ratio)), best = null, bestD = max + 1;
+    var dig = digitsOf(f);
+    for (var i = 0; i < known.length; i++) {
+      // Zahlen (Mengen!) nie "korrigieren": "2x Traubensaft" darf nicht zum
+      // bekannten "3x Traubensaft" werden.
+      if (digitsOf(known[i].f) !== dig) continue;
+      var d = editDistance(f, known[i].f, max);
+      if (d < bestD) { bestD = d; best = known[i].text; if (d === 0) break; }
+    }
+    return best;
+  }
+  function knownTexts() {
+    var cats = [], items = [], seenC = {}, seenI = {};
+    state.template.categories.concat(state.list.categories).forEach(function (c) {
+      var fc = foldText(c.name);
+      if (!seenC[fc]) { seenC[fc] = true; cats.push({ text: c.name, f: fc }); }
+      c.items.forEach(function (it) {
+        var fi = foldText(it.text);
+        if (!seenI[fi]) { seenI[fi] = true; items.push({ text: it.text, f: fi }); }
+      });
+    });
+    return { cats: cats, items: items };
+  }
+  // OCR-Zeilen -> Pruefliste [{cat, text, ocrText, open, selected}]
+  function buildReviewRows(rows) {
+    var known = knownTexts(), out = [], cat = 'Unsortiert', last = null;
+    rows.forEach(function (r) {
+      if (r.kind === 'cat') {
+        var name = r.text.replace(/:$/, '').trim();
+        cat = closestKnown(name, known.cats, 0.25) || name;
+        last = null;
+        return;
+      }
+      if (r.kind === 'cont' && last) {
+        // Umgebrochener Artikel (zweite Zeile ohne eigene Checkbox).
+        last.ocrText += ' ' + r.text;
+        last.text = closestKnown(last.ocrText, known.items, 0.2) || last.ocrText;
+        return;
+      }
+      last = { cat: cat, ocrText: r.text, open: r.open, selected: r.open };
+      last.text = closestKnown(r.text, known.items, 0.2) || r.text;
+      out.push(last);
+    });
+    return out;
+  }
+
+  function setOcrProgress(msg) {
+    var el = $('#ocr-progress');
+    el.hidden = !msg;
+    el.textContent = msg || '';
+  }
+  function startFileImport(file) {
+    if (ocrBusy || !file) return;
+    ocrBusy = true;
+    show('#import-overlay');
+    $('#import-feedback').textContent = '';
+    $('#ocr-review').hidden = true;
+    $('#import-paste-part').hidden = true;
+    setOcrProgress('Texterkennung wird geladen…');
+    var engine, allRows = [];
+    nextFrame().then(function () { return loadOcrEngine(); })
+      .then(function (e) { engine = e; return openPages(file); })
+      .then(function (pages) {
+        var chain = Promise.resolve();
+        pages.forEach(function (render, idx) {
+          chain = chain.then(function () {
+            setOcrProgress('Lese Seite ' + (idx + 1) + ' von ' + pages.length + '…');
+            return nextFrame();
+          }).then(render).then(function (c) { return ocrPage(engine, c); })
+            .then(function (rows) { allRows = allRows.concat(rows); });
+        });
+        return chain;
+      })
+      .then(function () {
+        ocrBusy = false;
+        setOcrProgress('');
+        ocrRows = buildReviewRows(allRows);
+        if (!ocrRows.length) {
+          $('#import-paste-part').hidden = false;
+          $('#import-feedback').textContent = 'Keine Zeilen erkannt.';
+          return;
+        }
+        renderOcrReview();
+      })
+      .catch(function (err) {
+        ocrBusy = false;
+        setOcrProgress('');
+        $('#import-paste-part').hidden = false;
+        $('#import-feedback').textContent = 'Fehler beim Lesen: ' + (err && err.message ? err.message : err);
+      });
+  }
+  function renderOcrReview() {
+    var html = '', cat = null, nOpen = 0, showAll = $('#ocr-show-all').checked;
+    ocrRows.forEach(function (r, i) {
+      if (r.selected) nOpen++;
+      if (!showAll && !r.open && !r.selected) return;
+      if (r.cat !== cat) { cat = r.cat; html += '<div class="ocr-cat">' + escapeHtml(cat) + '</div>'; }
+      var fix = r.text !== r.ocrText ? '<span class="ocr-fix">gelesen: ' + escapeHtml(r.ocrText) + '</span>' : '';
+      html += '<div class="ocr-row' + (r.selected ? '' : ' off') + '">' +
+        '<input type="checkbox" data-ocr-idx="' + i + '"' + (r.selected ? ' checked' : '') + '>' +
+        '<span class="ocr-text" data-action="ocr-edit" data-idx="' + i + '">' + escapeHtml(r.text) + fix + '</span></div>';
+    });
+    $('#ocr-review-list').innerHTML = html || '<p class="hint">Keine offenen Artikel erkannt.</p>';
+    $('#ocr-review').hidden = false;
+    $('#import-feedback').textContent = ocrRows.length + ' Zeilen erkannt, ' + nOpen + ' davon offen.';
+  }
+  function editOcrRow(idx) {
+    var r = ocrRows && ocrRows[idx];
+    if (!r) return;
+    textInputDialog('Artikel korrigieren', r.text).then(function (val) {
+      if (val === null || val === undefined) return;
+      val = val.trim();
+      if (!val) return;
+      r.text = val; r.ocrText = val;
+      renderOcrReview();
+    });
+  }
+  function applyOcrImport() {
+    if (!ocrRows) return;
+    function group(rows) {
+      var cats = [], byName = {};
+      rows.forEach(function (r) {
+        var k = normName(r.cat);
+        if (!byName[k]) { byName[k] = { name: r.cat, items: [] }; cats.push(byName[k]); }
+        byName[k].items.push(r.text);
+      });
+      return cats;
+    }
+    importSnapshot = { list: JSON.parse(JSON.stringify(state.list)), template: JSON.parse(JSON.stringify(state.template)) };
+    var rl = mergeParsedCategories(group(ocrRows.filter(function (r) { return r.selected; })), state.list, false);
+    var rt = mergeParsedCategories(group(ocrRows), state.template, true);
+    saveAll();
+    render();
+    ocrRows = null;
+    $('#ocr-review').hidden = true;
+    $('#import-paste-part').hidden = false;
+    $('#import-feedback').innerHTML = 'Importiert: ' + rl.addedItems + ' Artikel in die Liste, ' + rt.addedItems +
+      ' neue in die Vorlage. <button data-action="undo-import" class="link-btn">Rückgängig</button>';
+  }
+  function cancelOcrImport() {
+    ocrRows = null;
+    $('#ocr-review').hidden = true;
+    $('#import-paste-part').hidden = false;
+    $('#import-feedback').textContent = '';
+  }
+  // Android "Teilen -> Einkaufsliste": die native Seite haelt die Datei bereit,
+  // JS holt sie ab (Pull, damit es auch vor fertigem Seitenaufbau klappt).
+  function checkSharedFile() {
+    var bridge = window.ElAndroid;
+    if (!bridge || !bridge.getSharedFile || ocrBusy) return;
+    var json = bridge.getSharedFile();
+    if (!json) return;
+    try {
+      var o = JSON.parse(json);
+      var b = atob(o.b64), u = new Uint8Array(b.length);
+      for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+      hide('#menu-overlay');
+      openImportModal();
+      startFileImport(new File([u], o.name || 'geteilt', { type: o.mime || '' }));
+    } catch (e) {
+      toast('Geteilte Datei nicht lesbar.');
+    }
+  }
+  window.elCheckSharedFile = checkSharedFile; // fuer onNewIntent der nativen Seite
 
   // ---------- store profile UI ----------
   function openStoreSortModal() {
@@ -1181,6 +1643,17 @@
     'open-import': function () { hide('#menu-overlay'); openImportModal(); },
     'close-import': function () { hide('#import-overlay'); },
     'do-import': function () { doImport(); },
+    'pick-import-file': function () {
+      if (ocrBusy) return;
+      // In der APK liest Android die Datei selbst (siehe build.ps1), im
+      // Desktop-Browser der normale Datei-Dialog.
+      if (window.ElAndroid && window.ElAndroid.pickFile) { window.ElAndroid.pickFile(); return; }
+      $('#import-file').value = '';
+      $('#import-file').click();
+    },
+    'ocr-apply': function () { applyOcrImport(); },
+    'ocr-cancel': function () { cancelOcrImport(); },
+    'ocr-edit': function (el) { editOcrRow(+el.dataset.idx); },
     'undo-import': function () { undoImport(); },
     'open-store-sort': function () { hide('#menu-overlay'); openStoreSortModal(); },
     'close-storesort': function () { hide('#storesort-overlay'); },
@@ -1255,6 +1728,18 @@
       currentEditProfileId = e.target.value;
       renderProfileOrderEditor();
     });
+    $('#import-file').addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      if (f) startFileImport(f);
+    });
+    $('#ocr-review-list').addEventListener('change', function (e) {
+      var idx = e.target.dataset.ocrIdx;
+      if (idx === undefined || !ocrRows) return;
+      ocrRows[+idx].selected = e.target.checked;
+      renderOcrReview();
+    });
+    $('#ocr-show-all').addEventListener('change', function () { if (ocrRows) renderOcrReview(); });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) checkSharedFile(); });
     $('#textinput-field').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') { e.preventDefault(); handlers['textinput-ok'](); }
     });
@@ -1279,6 +1764,7 @@
     wireStaticHandlers();
     switchView(state.settings.activeView || 'list');
     render();
+    checkSharedFile();
   }
 
   document.addEventListener('DOMContentLoaded', init);
