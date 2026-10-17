@@ -120,5 +120,10 @@ v1.3 (code 4, 2026-10-17): PDF-/Bild-Import für Samsung-Notes-Exporte
 Prüfliste) plus "Teilen → Einkaufsliste". Im Browser gegen einen echten
 12-Seiten-Export und einen Screenshot getestet; signierte APK in `dist/`.
 Gerätetest 2026-10-17 (Pixel 11 Pro, 14-Seiten-Export): "Teilen" funktioniert,
-Erkennung stimmt. Offener Punkt: 14 Seiten dauern auf dem Handy spürbar lange.
-Die Zeit steckt in der OCR jeder Zeile; die Pixel-Analyse ist billig.
+Erkennung stimmt, aber 14 Seiten dauerten auf dem Handy spürbar lange.
+
+v1.4 (code 5): schneller Import. Standardmäßig werden abgehakte Zeilen nicht
+per OCR gelesen (Schalter "auch abgehakte Zeilen lesen"). Rohpixel gehen
+direkt an Tesseract statt über PNG, das war der größte Einzelposten. Fix:
+Zwei-Buchstaben-Kategorien ("TK") wurden vom Screenshot-Filter verworfen.
+Desktop 12 Seiten: 11 s → ~4 s. Tempo auf dem Handy noch nicht nachgemessen.

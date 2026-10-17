@@ -7,7 +7,7 @@ aufgebaut als Edeka). Reine Web-App (`web/index.html`), gebaut zur APK über
 [apk-builder](../apk-builder). Build-/Testbefehle stehen in
 [CLAUDE.md](CLAUDE.md).
 
-Aktuelle signierte Release-APK: [einkaufsliste-1.3.apk](dist/einkaufsliste-1.3.apk)
+Aktuelle signierte Release-APK: [einkaufsliste-1.4.apk](dist/einkaufsliste-1.4.apk)
 
 ## Hintergrund
 
@@ -170,7 +170,14 @@ Ablauf pro Seite (`ocrPage` in `index.html`):
    (offen ~0.85, abgehakt ~0.3-0.5, Schwelle 0.62) UND kein langer
    durchgehender Strich (Durchstreichung).
 4. OCR auf einer bereinigten Kopie: Checkbox weg, Durchstreich-Strich
-   entfernt, binarisiert; je Zeile ein Rechteck mit Tesseract-PSM 7.
+   entfernt, binarisiert; je Zeile ein Rechteck mit Tesseract-PSM 7. Die
+   Kopie geht als 8-Bit-Rohpixel direkt in den Wasm-Speicher
+   (`TessBaseAPI.SetImage(ptr, w, h, 1, w)`) - der frühere Umweg über
+   `canvas.toBlob('image/png')` kostete allein ~1 s pro Seite.
+   **Schnellmodus (Standard):** abgehakte Zeilen werden gar nicht erst
+   gelesen, nur offene Artikel und Kategorien - offen/abgehakt kommt ja aus
+   der billigen Pixel-Analyse. Schalter "auch abgehakte Zeilen lesen" im
+   Import-Dialog liest alles (wird in `el_settings_v1.ocrReadAll` gemerkt).
 5. Zeile ohne Box: weit links = Kategorie (braucht überwiegend Buchstaben,
    filtert Statusleisten-Reste auf Screenshots), auf Höhe der Artikeltexte
    und direkt unter einem Artikel = umgebrochene Folgezeile, sonst verworfen
@@ -183,12 +190,12 @@ Ablauf pro Seite (`ocrPage` in `index.html`):
 
 Danach Prüfliste: offene Artikel sind angehakt (= kommen auf die Liste),
 Text antippen zum Korrigieren, abgehakte per Schalter einblendbar.
-"Übernehmen": angehakte → aktive Liste, **alle** Zeilen → Vorlage (so
-wächst der Katalog mit), mit dem bestehenden einmaligen Undo.
+"Übernehmen": angehakte → aktive Liste, **alle gelesenen** Zeilen → Vorlage
+(im Schnellmodus also nur die offenen), mit dem bestehenden einmaligen Undo.
 
 Gemessen am Backup-Export vom 28.02.2026 (12 Seiten, 206 Zeilen): alle 22
-offenen Artikel korrekt erkannt, keine Fehlzuordnung offen/abgehakt; am
-Desktop ~25 s für 12 Seiten.
+offenen Artikel korrekt erkannt, keine Fehlzuordnung offen/abgehakt. Am
+Desktop: Schnellmodus ~4 s, alles lesen ~7 s (v1.3 mit PNG-Umweg: ~11 s).
 
 ## Wichtige technische Falle: keine nativen Dialoge
 
