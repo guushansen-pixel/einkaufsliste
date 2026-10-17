@@ -1,0 +1,3 @@
+# Vendored Bibliotheken byte-genau halten (SHA-256 in web/vendor/README.md)
+web/vendor/*.js binary
+*.apk binary
