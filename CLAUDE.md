@@ -127,3 +127,5 @@ per OCR gelesen (Schalter "auch abgehakte Zeilen lesen"). Rohpixel gehen
 direkt an Tesseract statt über PNG, das war der größte Einzelposten. Fix:
 Zwei-Buchstaben-Kategorien ("TK") wurden vom Screenshot-Filter verworfen.
 Desktop 12 Seiten: 11 s → ~4 s. Tempo auf dem Handy noch nicht nachgemessen.
+Auch als GitHub-Release `v1.4` mit APK veröffentlicht. Künftige Versionen:
+Tag pushen, Release mit `dist/`-APK als Asset anlegen.
