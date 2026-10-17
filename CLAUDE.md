@@ -126,6 +126,7 @@ v1.4 (code 5): schneller Import. Standardmäßig werden abgehakte Zeilen nicht
 per OCR gelesen (Schalter "auch abgehakte Zeilen lesen"). Rohpixel gehen
 direkt an Tesseract statt über PNG, das war der größte Einzelposten. Fix:
 Zwei-Buchstaben-Kategorien ("TK") wurden vom Screenshot-Filter verworfen.
-Desktop 12 Seiten: 11 s → ~4 s. Tempo auf dem Handy noch nicht nachgemessen.
+Desktop 12 Seiten: 11 s → ~4 s. Auf dem Handy bestätigt (2026-10-17): "geht
+viel schneller".
 Auch als GitHub-Release `v1.4` mit APK veröffentlicht. Künftige Versionen:
 Tag pushen, Release mit `dist/`-APK als Asset anlegen.
