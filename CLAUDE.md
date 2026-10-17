@@ -119,4 +119,6 @@ v1.3 (code 4, 2026-10-17): PDF-/Bild-Import für Samsung-Notes-Exporte
 (Offline-OCR, offen/abgehakt aus den Pixeln, Abgleich mit der Vorlage,
 Prüfliste) plus "Teilen → Einkaufsliste". Im Browser gegen einen echten
 12-Seiten-Export und einen Screenshot getestet; signierte APK in `dist/`.
-**Gerätetest noch offen** (Dateiauswahl, Teilen, OCR-Tempo auf dem Handy).
+Gerätetest 2026-10-17 (Pixel 11 Pro, 14-Seiten-Export): "Teilen" funktioniert,
+Erkennung stimmt. Offener Punkt: 14 Seiten dauern auf dem Handy spürbar lange.
+Die Zeit steckt in der OCR jeder Zeile; die Pixel-Analyse ist billig.
