@@ -126,6 +126,11 @@ v1.4 (code 5): schneller Import. Standardmäßig werden abgehakte Zeilen nicht
 per OCR gelesen (Schalter "auch abgehakte Zeilen lesen"). Rohpixel gehen
 direkt an Tesseract statt über PNG, das war der größte Einzelposten. Fix:
 Zwei-Buchstaben-Kategorien ("TK") wurden vom Screenshot-Filter verworfen.
+
+v1.5 (code 6, 2026-10-25): Edge-to-Edge - `.topbar`, `.sheet`, `.view`
+(unten) und `.toast` polstern mit `var(--sat)` / `var(--sab)`; die echten
+Leistenhoehen setzt das apk-builder-Template (`env(safe-area-inset-*)`
+liefert im WebView 0).
 Desktop 12 Seiten: 11 s → ~4 s. Auf dem Handy bestätigt (2026-10-17): "geht
 viel schneller".
 Auch als GitHub-Release `v1.4` mit APK veröffentlicht. Künftige Versionen:

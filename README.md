@@ -7,7 +7,7 @@ aufgebaut als Edeka). Reine Web-App (`web/index.html`), gebaut zur APK über
 [apk-builder](../apk-builder). Build-/Testbefehle stehen in
 [CLAUDE.md](CLAUDE.md).
 
-Aktuelle signierte Release-APK: [einkaufsliste-1.4.apk](dist/einkaufsliste-1.4.apk)
+Aktuelle signierte Release-APK: [einkaufsliste-1.5.apk](dist/einkaufsliste-1.5.apk)
 
 ## Hintergrund
 

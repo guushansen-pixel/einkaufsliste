@@ -6,6 +6,9 @@
 <title>Einkaufsliste</title>
 <style>
   :root {
+    /* Hoehe von Status-/Navigationsleiste; in der APK setzt das apk-builder-Template die echten Werte (Edge-to-Edge ab targetSdk 35). */
+    --sat: env(safe-area-inset-top, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
     --bg: #101B15;
     --bg-elevated: #16241C;
     --fg: #F3F7F4;
@@ -40,7 +43,7 @@
 
   .topbar {
     display: flex; align-items: center; justify-content: space-between;
-    padding: calc(16px + env(safe-area-inset-top, 0px)) 18px 14px;
+    padding: calc(16px + var(--sat)) 18px 14px;
   }
   .topbar h1 {
     font-size: 1.5em; margin: 0; letter-spacing: -0.01em;
@@ -65,7 +68,7 @@
   }
   .tab.active { background: var(--accent); color: var(--accent-ink); box-shadow: 0 3px 10px rgba(76,175,125,0.35); }
 
-  .view { display: none; flex-direction: column; flex: 1; overflow-y: auto; padding: 0 16px 28px; }
+  .view { display: none; flex-direction: column; flex: 1; overflow-y: auto; padding: 0 16px calc(28px + var(--sab)); }
   .view.active { display: flex; }
 
   .add-bar { display: flex; gap: 8px; margin-bottom: 10px; }
@@ -167,7 +170,7 @@
   .sheet {
     background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     padding: 12px 20px 20px; width: 100%; max-width: 480px; max-height: 85vh; overflow-y: auto;
-    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(20px + var(--sab));
     box-shadow: var(--shadow-md); animation: sheetUp 0.22s cubic-bezier(0.2, 0.8, 0.3, 1);
   }
   .sheet::before {
@@ -219,7 +222,7 @@
   select#storeedit-select { flex: 1; background: var(--card-bg); border: 1px solid var(--border); color: var(--fg); border-radius: var(--radius-sm); padding: 10px; }
 
   .toast {
-    position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%) translateY(20px);
+    position: fixed; left: 50%; bottom: calc(30px + var(--sab)); transform: translateX(-50%) translateY(20px);
     background: var(--card-bg-hover); color: var(--fg); border: 1px solid var(--border);
     border-radius: 30px; padding: 11px 20px; font-size: 0.9em; opacity: 0; pointer-events: none;
     transition: opacity 0.2s ease, transform 0.2s ease; z-index: 100; max-width: 85%; text-align: center;
